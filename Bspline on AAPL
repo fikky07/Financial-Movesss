@@ -1,0 +1,34 @@
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+from spline_utils import augknt, greville, bsval, nval
+df = pd.read_csv('AAPL_historical_data.csv', skiprows=3)
+np.random.seed(901454572)
+df.index = pd.to_datetime(df.index)
+dates_norm = (df.index - df.index.min()).days.values.astype(float)
+dates_norm = dates_norm / dates_norm.max()
+k = 4 # Cubic spline (order = 4)
+n_knots = 10
+knots_raw = np.linspace(0, 1, n_knots)
+knots = augknt(knots_raw, k)
+xg = greville(knots, k)
+B = np.array([
+[nval(knots, t, j, k, r=0) for j in range(len(xg))
+] for t in dates_norm])
+
+b_coeff, residuals, _, _ = np.linalg.lstsq(B, yp, rcond=None)
+t_plot_norm = np.linspace(0, 1, 1000)
+spline_values = bsval(b_coeff, knots, t_plot)
+dates_plot = pd.date_range(start=df.index.min(), end=df.index.max(), periods=1000)
+plt.figure(figsize=(12, 6))
+plt.scatter(xp, yp, c='k', s=10, alpha=0.5, label='Data(prices)')
+plt.plot(t_plot, spline_values, 'r-', lw=2, label='Spline Fit')
+plt.plot(xg, b_coeff, 'bo--', label='Control Polygon')
+plt.xlabel('Days (0 = Jan 1, 1 = Dec 31)')
+plt.ylabel('Prices ($)')
+plt.title(' Cubic Spline Fit to AAPL historical Data')
+plt.legend()
+plt.grid(True)
+plt.savefig('Cubic spline fit for AAPL historical data.png', bbox_inches='tight')
+plt.show()
+R
