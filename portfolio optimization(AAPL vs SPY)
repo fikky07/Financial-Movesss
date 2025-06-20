@@ -1,0 +1,86 @@
+import pandas as pd
+import numpy as np
+data_AAPL = pd.read_csv('AAPL_historical_data.csv')
+data_SPY = pd.read_csv('SPY_history.csv')
+data_AAPL.head()
+data_SPY.head()
+aapl_df_clean = data_AAPL.iloc[2:].copy()
+spy_df_clean = data_SPY.iloc[2:].copy()
+aapl_df_clean
+spy_df_clean
+aapl_df_clean.columns = ['Date', 'Close', 'High', 'Low', 'Open', 'Volume']
+spy_df_clean.columns = ['Date', 'Close', 'High', 'Low', 'Open', 'Volume']
+
+aapl_df_clean['Date'] = pd.to_datetime(aapl_df_clean['Date'])
+aapl_df_clean['Close'] = aapl_df_clean['Close'].astype(float)
+
+spy_df_clean['Date'] = pd.to_datetime(spy_df_clean['Date'])
+spy_df_clean['Close'] = spy_df_clean['Close'].astype(float)
+aapl_df_clean
+spy_df_clean
+merged_df = pd.merge(aapl_df_clean[['Date', 'Close']], spy_df_clean[['Date', 'Close']], on='Date', suffixes=('_AAPL', '_SPY'))
+merged_df
+
+# Normalize the closing prices (start each at 1.0 for fair comparison)
+normalized_prices = merged_df[['Close_AAPL', 'Close_SPY']] / merged_df[['Close_AAPL', 'Close_SPY']].iloc[0]
+daily_returns = normalized_prices.pct_change().dropna()
+daily_returns
+
+# Define Sharpe Ratio function (negative for minimization)
+def negative_sharpe_ratio(weights, returns):
+    portfolio_returns = (returns * weights).sum(axis=1)
+    mean_return = portfolio_returns.mean()
+    std_return = portfolio_returns.std()
+    sharpe_ratio = mean_return / std_return
+    return -sharpe_ratio  # Negative for minimization
+
+constraints = ({'type': 'eq', 'fun': lambda x: np.sum(x) - 1})
+
+
+bounds = ((0, 1), (0, 1))
+
+initial_guess = [0.5, 0.5]
+
+# Optimize using scipy
+from scipy.optimize import minimize
+
+result = minimize(negative_sharpe_ratio,
+                  initial_guess,
+                  args=(daily_returns,),
+                  method='SLSQP',
+                  bounds=bounds,
+                  constraints=constraints)
+
+optimal_allocations = result.x
+
+optimal_portfolio_returns = (daily_returns * optimal_allocations).sum(axis=1)
+cumulative_return = (normalized_prices * optimal_allocations).sum(axis=1).iloc[-1] - 1
+avg_daily_return = optimal_portfolio_returns.mean()
+std_daily_return = optimal_portfolio_returns.std()
+sharpe_ratio = avg_daily_return / std_daily_return
+
+performance_summary = pd.DataFrame({
+    'Metric': ['AAPL Allocation', 'SPY Allocation', 'Cumulative Return', 'Average Daily Return',
+               'Standard Deviation of Returns', 'Sharpe Ratio'],
+    'Value': [optimal_allocations[0], optimal_allocations[1], cumulative_return,
+              avg_daily_return, std_daily_return, sharpe_ratio]
+})
+performance_summary
+import matplotlib.pyplot as plt
+
+# Calculate portfolio value over time using optimal allocations
+portfolio_value = (normalized_prices * optimal_allocations).sum(axis=1)
+spy_value = normalized_prices['Close_SPY']
+
+# Plot the optimized portfolio value vs. Benchmark SPY
+plt.figure(figsize=(10, 6))
+plt.plot(merged_df['Date'], portfolio_value, label='Optimized Portfolio')
+plt.plot(merged_df['Date'], spy_value, label='SPY (Benchmark)')
+plt.title('Optimized Portfolio Value over Time vs. Benchmark SPY')
+plt.xlabel('Date')
+plt.ylabel('Normalized Value')
+plt.legend()
+plt.grid(True)
+plt.tight_layout()
+plt.savefig('Portfolio Optimization Graph.png', bbox_inches= 'tight')
+plt.show()
